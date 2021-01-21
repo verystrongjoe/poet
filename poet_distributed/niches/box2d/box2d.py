@@ -29,14 +29,18 @@ DEFAULT_ENV = Env_config(
         stair_width=[],
         stair_steps=[])
 
+
 class Box2DNiche(Niche):
     def __init__(self, env_configs, seed, init='random', stochastic=False):
         self.model = Model(bipedhard_custom)
         if not isinstance(env_configs, list):
             env_configs = [env_configs]
         self.env_configs = OrderedDict()
+
+        # 여기 env_configs는 환경의 이름 key로 하는 환경 리스트 사전
         for env in env_configs:
             self.env_configs[env.name] = env
+
         self.seed = seed
         self.stochastic = stochastic
         self.model.make_env(seed=seed, env_config=DEFAULT_ENV)
@@ -56,7 +60,6 @@ class Box2DNiche(Niche):
         self.stochastic = state["stochastic"]
         self.model.make_env(seed=self.seed, env_config=DEFAULT_ENV)
         self.init = state["init"]
-
 
     def add_env(self, env):
         env_name = env.name
@@ -78,16 +81,20 @@ class Box2DNiche(Niche):
                 'Undefined initialization scheme `{}`'.format(self.init))
 
     def rollout(self, theta, random_state, eval=False):
+        # 신기하다 network parameter를 바로 집어넣고 처리하도록 한다는게 신기방기!!
         self.model.set_model_params(theta)
         total_returns = 0
         total_length = 0
+
         if self.stochastic:
             seed = random_state.randint(1000000)
         else:
-            seed = self.seed
+            seed = self.seed  # deterministic
+
         for env_config in self.env_configs.values():
             returns, lengths = simulate(
                 self.model, seed=seed, train_mode=not eval, num_episode=1, env_config_this_sim=env_config)
-            total_returns += returns[0]
-            total_length += lengths[0]
+            total_returns += returns[0]  # mean of multiple G_t
+            total_length += lengths[0]  # sum of multiple episode lengths
+
         return total_returns / len(self.env_configs), total_length

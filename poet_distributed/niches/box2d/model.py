@@ -11,10 +11,10 @@ import time
 import logging
 logger = logging.getLogger(__name__)
 
-final_mode = False
+final_mode = False  # unused
 render_mode = False
 RENDER_DELAY = False
-record_video = False
+record_video = False  # unused
 MEAN_MODE = False
 
 
@@ -46,6 +46,10 @@ def softmax(x):
 
 
 def sample(p):
+    """
+    np.random.multinomial(20, [1/6.]*6, size=1)
+    array([[4, 1, 7, 5, 2, 1]]) # random
+    """
     return np.argmax(np.random.multinomial(1, p))
 
 
@@ -93,13 +97,18 @@ class Model:
         for shape in self.shapes:
             self.weight.append(np.zeros(shape=shape))
             self.bias.append(np.zeros(shape=shape[1]))
-            self.param_count += (np.product(shape) + shape[1])
-            if self.output_noise[idx]:
+            self.param_count += (np.product(shape) + shape[1])  # weight, bias
+
+            # for noise of each layer weight output
+            if self.output_noise[idx]:   # add noise per each layer output output, it is also param!
                 self.param_count += shape[1]
+
+            # log standard deviation
             log_std = np.zeros(shape=shape[1])
-            self.bias_log_std.append(log_std)
-            out_std = np.exp(self.sigma_factor * log_std + self.sigma_bias)
-            self.bias_std.append(out_std)
+            self.bias_log_std.append(log_std)  # todo: bias log standard deviation
+
+            out_std = np.exp(self.sigma_factor * log_std + self.sigma_bias)  # todo : what is it?
+            self.bias_std.append(out_std)  # todo: bias standard deviation
             idx += 1
 
         self.render_mode = False
@@ -167,6 +176,9 @@ class Model:
     def get_random_model_params(self, stdev=0.1):
         return np.random.randn(self.param_count) * stdev
 
+
+# 왜 이 함수가 model.py에 있을까? 여튼 이 함수는 모델을 받아서 실제 rollout하는 것
+# 기본이 5개의 에피소드를 렌더링 없이
 def simulate(model, seed, train_mode=False, render_mode=False, num_episode=5,
              max_len=-1, env_config_this_sim=None):
     reward_list = []
@@ -204,9 +216,9 @@ def simulate(model, seed, train_mode=False, render_mode=False, num_episode=5,
                 if RENDER_DELAY:
                     time.sleep(0.01)
 
-            if model.rnn_mode:
-                model.update(obs, t)
-                action = model.get_action()
+            if model.rnn_mode:  # rnn_mode가 뭘의미하는걸까/ 여튼 model을 업데이트하는게 차이점점
+               model.update(obs, t)  # 이거 구현체가 없는듯한데?
+               action = model.get_action()
             else:
                 if MEAN_MODE:
                     action = model.get_action(

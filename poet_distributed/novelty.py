@@ -49,6 +49,7 @@ def euclidean_distance(nx, ny, normalize=False):
         b = np.linalg.norm(x[-1] - y[n:])
     return np.sqrt(a**2 + b**2)
 
+# todo: 개선점이 보일 것 같음.
 def compute_novelty_vs_archive(archive, niche, k):
     distances = []
     normalize = False

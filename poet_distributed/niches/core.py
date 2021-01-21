@@ -16,10 +16,12 @@
 class Niche:
     def rollout_batch(self, thetas, batch_size, random_state, eval=False):
         import numpy as np
-        returns = np.zeros(batch_size)
-        lengths = np.zeros(batch_size, dtype='int')
+        returns = np.zeros(batch_size)  # batch_size 개의 에피소드 리워드
+        lengths = np.zeros(batch_size, dtype='int')  # batch_size 개의 에피소드 step
 
+        # thetas 개수랑 batch size와 동일하게 맞춰야함
         for i, theta in enumerate(thetas):
+            # rollout은 Niche를 상속받은 객체의 rollout 호출 (theta, random_state, eval)
             returns[i], lengths[i] = self.rollout(
                 theta, random_state=random_state, eval=eval)
 

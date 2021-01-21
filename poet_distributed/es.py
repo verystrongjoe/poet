@@ -79,29 +79,42 @@ def fiber_get_theta(iteration, optim_id):
 def fiber_get_niche(iteration, optim_id):
     return niches[optim_id]
 
+
+# start_theta_eval에 호출되며, 이 함수가 pool에 각자 병렬작업 각 워커에 
+# 학습안하고 평가만 함
 def run_eval_batch_fiber(iteration, optim_id, batch_size, rs_seed):
     global noise, niches, thetas
-    random_state = np.random.RandomState(rs_seed)
-    niche = fiber_get_niche(iteration, optim_id)
-    theta = fiber_get_theta(iteration, optim_id)
+    random_state = np.random.RandomState(rs_seed)  # get random_state by seed
+    niche = fiber_get_niche(iteration, optim_id)   # select niche by optim_id
+    theta = fiber_get_theta(iteration, optim_id)   # select theta by optim_id
 
     returns, lengths = niche.rollout_batch((theta for i in range(batch_size)),
                                            batch_size, random_state, eval=True)
 
     return EvalResult(returns=returns, lengths=lengths)
 
+
+# start_step에 호출되며, 워커에서 실행되는 함수 (학습도 여기에서)
 def run_po_batch_fiber(iteration, optim_id, batch_size, rs_seed, noise_std):
+
     global noise, niches, thetas
+    # 로컬 난수 생성기 (seed가 고정이면 같은 값을 재현을 위해 나오도록 보장
     random_state = np.random.RandomState(rs_seed)
     niche = fiber_get_niche(iteration, optim_id)
     theta = fiber_get_theta(iteration, optim_id)
+
+    # 초기 설정한 noise의 sample_index를 batch_size만큼 뽑고
+    # 각 샘플은 파라메터 사이즈만크의 크기위 노이즈를
     noise_inds = np.asarray([noise.sample_index(random_state, len(theta))
                              for i in range(batch_size)],
                             dtype='int')
 
+    # 각 roll out마다 returns, legnths 각 2개의 아이템
     returns = np.zeros((batch_size, 2))
     lengths = np.zeros((batch_size, 2), dtype='int')
 
+    # 2번 시도
+    # 첫번째는 +표준편차 두번째는 -표준편차를 통해 파라메터 셋팅해서 각 결과(리워드, 플레이기간, 노이즈)
     returns[:, 0], lengths[:, 0] = niche.rollout_batch(
         (theta + noise_std * noise.get(noise_idx, len(theta))
          for noise_idx in noise_inds), batch_size, random_state)
@@ -147,9 +160,7 @@ class ESOptimizer:
         assert self.fiber_pool is not None
 
         self.theta = theta
-        #print(self.theta)
-        logger.debug('Optimizer {} optimizing {} parameters'.format(
-            optim_id, len(theta)))
+        logger.debug('Optimizer {} optimizing {} parameters'.format(optim_id, len(theta)))
         self.optimizer = Adam(self.theta, stepsize=learning_rate)
         self.sgd_optimizer = SimpleSGD(stepsize=learning_rate)
         self.lr_decay = lr_decay
@@ -172,6 +183,7 @@ class ESOptimizer:
         self.normalize_grads_by_noise_std = normalize_grads_by_noise_std
         self.returns_normalization = returns_normalization
 
+        # todo : 용도가 머임?
         if is_candidate == False:
             log_fields = [
                 'po_returns_mean_{}'.format(optim_id),
@@ -197,7 +209,6 @@ class ESOptimizer:
                 'timesteps_this_step_{}'.format(optim_id),
                 'timesteps_so_far_{}'.format(optim_id),
                 'time_elapsed_this_step_{}'.format(optim_id),
-
                 'accept_theta_in_{}'.format(optim_id),
                 'eval_returns_mean_best_in_{}'.format(optim_id),
                 'eval_returns_mean_best_with_ckpt_in_{}'.format(optim_id),
@@ -209,6 +220,7 @@ class ESOptimizer:
                 'time_elapsed_so_far',
                 'iteration',
             ])
+            # INFO:poet_distributed.es:Optimizer r1.2.p0.0_1.2.b1_1.0_1.2 created!
             logger.info('Optimizer {} created!'.format(optim_id))
 
         self.filename_best = log_file + '/' + log_file.split('/')[-1] + '.' + optim_id + '.best.json'
@@ -237,6 +249,7 @@ class ESOptimizer:
         logger.debug('Optimizer {} cleanning up workers...'.format(
             self.optim_id))
 
+    # ES 돌리기 전 log_data dict, self_evals, proposal, proposal_theta, proposal_sources 초기화
     def clean_dicts_before_iter(self):
         self.log_data.clear()
         self.self_evals = None
@@ -245,18 +258,13 @@ class ESOptimizer:
         self.proposal_source = None
 
     def pick_proposal(self, checkpointing, reset_optimizer):
-
-        accept_key = 'accept_theta_in_{}'.format(
-                self.optim_id)
+        accept_key = 'accept_theta_in_{}'.format(self.optim_id)
         if checkpointing and self.checkpoint_scores > self.proposal:
             self.log_data[accept_key] = 'do_not_consider_CP'
         else:
-            self.log_data[accept_key] = '{}'.format(
-                self.proposal_source)
+            self.log_data[accept_key] = '{}'.format(self.proposal_source)
             if self.optim_id != self.proposal_source:
-                self.set_theta(
-                    self.proposal_theta,
-                    reset_optimizer=reset_optimizer)
+                self.set_theta(self.proposal_theta, reset_optimizer=reset_optimizer)
                 self.self_evals = self.proposal
 
         self.checkpoint_thetas = np.array(self.theta)
@@ -289,6 +297,27 @@ class ESOptimizer:
 
 
     def update_dicts_after_transfer(self, source_optim_id, source_optim_theta, stats, keyword):
+        #  'eval_returns_mean_theta_from_others_in_
+        """
+        r0.2.p0.0_1.2.b1_0.2_0.6':
+        'flat_-37.44340681896614_r0.3.p0_0.8.b1_0_0.4_313.17351606889815
+        _r0.1.p0.4_1.6.b1_0.4_0.6_62.23981782780313
+        _r0.4.p0.0_1.6.b1_0.4_0.8_299.4858659236035
+        _r0.0.p0.4_2.0.b1_0.6_0.8_307.3869049589342
+        _r0.6.p0.4_0.8.b1_0.2_0.4_323.76925463779634
+        _r0.9.p0.0_0.8.b1_0.4_0.6_304.9114255490118
+        _r0.0.p0.4_2.4.b1_0.8_1.0_-113.5614037826102
+        _r1.3.p0.4_0.8.b1_0.6_0.8_294.1416506694867
+        _r1.7.p0.4_1.2.b1_0.8_0.8_290.5393245090057
+        _r1.2.p0.4_1.2.b1_0.2_0.8_311.6331466404316
+        _r1.9.p0.0_0.8.b1_0.4_0.6_313.4742194691492
+        _r0.5.p0.8_0.8.b1_0.0_0.6_313.7818083053882
+        _r1.7.p0.4_0.8.b1_1.0_1.0_69.68499753078882
+        _r2.1.p0.0_1.2.b1_0.6_0.6_295.78142765079724
+        _r2.2.p0.4_1.6.b1_0.4_0.4_318.3423647739343
+        _r0.0.p0.0_2.0.b1_0.8_0.8_96.50647733825042
+        _r2.2.p0.8_1.2.b1_0.2_0.4_314.3970485113258',
+        """
         eval_key = 'eval_returns_mean_{}_from_others_in_{}'.format(keyword,  # noqa
             self.optim_id)
         if eval_key not in self.log_data.keys():
@@ -301,6 +330,7 @@ class ESOptimizer:
             self.proposal_source = source_optim_id + ('' if keyword=='theta' else "_proposal")
             self.proposal_theta = np.array(source_optim_theta)
 
+    # ES 스탭 이후에 eval_stats를 업데이트
     def update_dicts_after_es(self, stats, self_eval_stats):
 
         self.self_evals = self_eval_stats.eval_returns_mean
@@ -314,8 +344,8 @@ class ESOptimizer:
             self.checkpoint_thetas = np.array(self.theta)
             self.checkpoint_scores = self_eval_stats.eval_returns_mean
 
-        self.episodes_so_far += stats.episodes_this_step
-        self.timesteps_so_far += stats.timesteps_this_step
+        self.episodes_so_far += stats.episodes_this_step  #
+        self.timesteps_so_far += stats.timesteps_this_step  # todo: episode_this_step과 무슨 차이지?
 
         if self.best_score is None or self.best_score < self.self_evals:
             self.best_score = self.self_evals
@@ -377,7 +407,7 @@ class ESOptimizer:
         logger.debug('Optimizer {} broadcasting theta...'.format(self.optim_id))
 
         thetas = self.fiber_shared["thetas"]
-        thetas[self.optim_id] = theta
+        thetas[self.optim_id] = theta # 여기 thetas에 해당 optim_id의 theta 설정이라
         self.iteration += 1
 
 
@@ -396,9 +426,9 @@ class ESOptimizer:
         niches[optim_id].delete_env(env_name)
 
     def start_chunk_fiber(self, runner, batches_per_chunk, batch_size, *args):
-        logger.debug('Optimizer {} spawning {} batches of size {}'.format(
-            self.optim_id, batches_per_chunk, batch_size))
+        logger.debug('Optimizer {} spawning {} batches of size {}'.format(self.optim_id, batches_per_chunk, batch_size))
 
+        # todo: 1 ~2^31-1에서 rs_seed를 생성
         rs_seeds = np.random.randint(np.int32(2 ** 31 - 1), size=batches_per_chunk)
 
         chunk_tasks = []
@@ -406,16 +436,24 @@ class ESOptimizer:
         niches = self.fiber_shared["niches"]
         thetas = self.fiber_shared["thetas"]
 
+        # pool.apply_sync 함수에 runner,
         for i in range(batches_per_chunk):
             chunk_tasks.append(
+                # Run function func with arguments args and keyword arguments kwds on a remote Pool worker.
+                # This is an asynchronous version of apply.
+                # An ApplyResult object which has a method .get() to get the actual results.
+                # https://uber.github.io/fiber/pool/
                 pool.apply_async(runner, args=(self.iteration,
                     self.optim_id, batch_size, rs_seeds[i])+args))
+
         return chunk_tasks
 
     def get_chunk(self, tasks):
         return [task.get() for task in tasks]
 
     def collect_po_results(self, po_results):
+        # 여기에서 노이즈를 다 concatenates를 하는구만
+        # todo : 디버깅
         noise_inds = np.concatenate([r.noise_inds for r in po_results])
         returns = np.concatenate([r.returns for r in po_results])
         lengths = np.concatenate([r.lengths for r in po_results])
@@ -426,9 +464,15 @@ class ESOptimizer:
         eval_lengths = np.concatenate([r.lengths for r in eval_results])
         return eval_returns, eval_lengths
 
+    # 노이즈 샤워!!
     def compute_grads(self, step_results, theta):
+        """
+        그래디언트 계산하는 부분,
+        논문에서 6페이지 REINFORCE 변형 파트....................
+        """
         noise_inds, returns, _ = self.collect_po_results(step_results)
 
+        # todo : 노이즈 들어간 파라메터 기준 + std_dev 와 - std_dev중의 리워드 기준 높은게 pos_row 낮은게 neg_row
         pos_row, neg_row = returns.argmax(axis=0)
         noise_sign = 1.0
         po_noise_ind_max = noise_inds[pos_row]
@@ -437,22 +481,24 @@ class ESOptimizer:
             noise_sign = -1.0
             po_noise_ind_max = noise_inds[neg_row]
 
+        # 표준편차 +, - 중 더 좋은 리워드 결과의 것으로 선택하여 노이즈 반영하고 po_theta_max라고 정의
         po_theta_max = theta + noise_sign * self.noise_std * noise.get(po_noise_ind_max, len(theta))
 
         if self.returns_normalization == 'centered_ranks':
-            proc_returns = compute_centered_ranks(returns)
+            proc_returns = compute_centered_ranks(returns)  # todo : 랭킹 가볍게 체크
         elif self.returns_normalization == 'normal':
-            proc_returns = (returns - returns.mean()) / (returns.std() + 1e-5)
+            proc_returns = (returns - returns.mean()) / (returns.std() + 1e-5) # 정규화
         else:
             raise NotImplementedError(
                 'Invalid return normalization `{}`'.format(
                     self.returns_normalization))
+
+        # todo : batched_weighted_sum 추측컨데, 리턴 값에 따라 배치의 그래디언트의 가중합!
         grads, _ = batched_weighted_sum(
             proc_returns[:, 0] - proc_returns[:, 1],
             (noise.get(idx, len(theta)) for idx in noise_inds),
             batch_size=500)
-
-        grads /= len(returns)
+        grads /= len(returns)  # Expectation
         if self.normalize_grads_by_noise_std:
             grads /= self.noise_std
         return grads, po_theta_max
@@ -466,15 +512,16 @@ class ESOptimizer:
     def start_theta_eval(self, theta):
         '''eval theta in this optimizer's niche'''
         step_t_start = time.time()
-        self.broadcast_theta(theta)
+        self.broadcast_theta(theta)  # ESOptimizer의 해당 theta 셋팅
 
+        # run_eval_batch_fiber 실행
         eval_tasks = self.start_chunk_fiber(
             run_eval_batch_fiber, self.eval_batches_per_step, self.eval_batch_size)
 
         return eval_tasks, theta, step_t_start
 
     def get_theta_eval(self, res):
-        eval_tasks, theta, step_t_start = res
+        eval_tasks, theta, step_t_start = res  # todo: 3개 인자 팩을 넘겨받는건 별로임!
         eval_results = self.get_chunk(eval_tasks)
         eval_returns, eval_lengths = self.collect_eval_results(eval_results)
         step_t_end = time.time()
@@ -493,10 +540,9 @@ class ESOptimizer:
             time_elapsed=step_t_end - step_t_start,
         )
 
+    # STEP 시작 run_po_batch_fiber..
     def start_step(self, theta=None):
-        ''' based on theta (if none, this optimizer's theta)
-            generate the P.O. cloud, and eval them in this optimizer's niche
-        '''
+
         step_t_start = time.time()
         if theta is None:
             theta = self.theta
@@ -511,19 +557,20 @@ class ESOptimizer:
         return step_results, theta, step_t_start
 
     def get_step(self, res, propose_with_adam=True, decay_noise=True, propose_only=False):
+
         step_tasks, theta, step_t_start = res
         step_results = self.get_chunk(step_tasks)
 
-        _, po_returns, po_lengths = self.collect_po_results(
-            step_results)
+        _, po_returns, po_lengths = self.collect_po_results(step_results)
         episodes_this_step = len(po_returns)
         timesteps_this_step = po_lengths.sum()
 
-        logger.debug(
-            'Optimizer {} finished running {} episodes, {} timesteps'.format(
+        logger.debug('Optimizer {} finished running {} episodes, {} timesteps'.format(
                 self.optim_id, episodes_this_step, timesteps_this_step))
 
+        # gradient 계산
         grads, po_theta_max = self.compute_grads(step_results, theta)
+
         if not propose_only:
             update_ratio, theta = self.optimizer.update(
                 theta, -grads + self.l2_coeff * theta)
@@ -534,7 +581,7 @@ class ESOptimizer:
                 self.noise_std = max(
                     self.noise_std * self.noise_decay, self.noise_limit)
 
-        else:  #only make proposal
+        else:  # only make proposal
             if propose_with_adam:
                 update_ratio, theta = self.optimizer.propose(
                     theta, -grads + self.l2_coeff * theta)
@@ -542,8 +589,7 @@ class ESOptimizer:
                 update_ratio, theta = self.sgd_optimizer.compute(
                     theta, -grads + self.l2_coeff * theta)  # keeps no state
         logger.debug(
-            'Optimizer {} finished computing gradients'.format(
-                self.optim_id))
+            'Optimizer {} finished computing gradients'.format(self.optim_id))
 
         step_t_end = time.time()
 
@@ -571,22 +617,24 @@ class ESOptimizer:
         self_eval_stats = self.get_theta_eval(self_eval_task)
         return self_eval_stats.eval_returns_mean
 
-
     def evaluate_transfer(self, optimizers, propose_with_adam=False):
-
         best_init_score = None
         best_init_theta = None
 
         for source_optim in optimizers.values():
             score = self.evaluate_theta(source_optim.theta)
+
             if best_init_score == None or score > best_init_score:
                 best_init_score = score
                 best_init_theta = np.array(source_optim.theta)
 
             task = self.start_step(source_optim.theta)
-            proposed_theta, _ = self.get_step(
-                task, propose_with_adam=propose_with_adam, propose_only=True)
+
+            # 여기에서 한번 그래디언트 계산되고 업데이트가 된다고 봄?
+            proposed_theta, _ = self.get_step(task, propose_with_adam=propose_with_adam, propose_only=True)
+
             score = self.evaluate_theta(proposed_theta)
+
             if score > best_init_score:
                 best_init_score = score
                 best_init_theta = np.array(proposed_theta)

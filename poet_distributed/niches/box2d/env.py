@@ -35,12 +35,13 @@ Game = namedtuple('Game', ['env_name', 'time_factor', 'input_size',
                            'output_size', 'layers', 'activation', 'noise_bias',
                            'output_noise'])
 
+# 환경 해당 파라메터 정의 논문과 똑같이 정의되었으나, output_noise와 noise_bais가 셋팅안된 부분 참고
 bipedhard_custom = Game(env_name='BipedalWalkerCustom-v0',
                         input_size=24,
                         output_size=4,
-                        time_factor=0,
+                        time_factor=0, # todo: 요거 머지?
                         layers=[40, 40],
                         activation='tanh',
-                        noise_bias=0.0,
-                        output_noise=[False, False, False],
+                        noise_bias=0.0, #
+                        output_noise=[False, False, False], #
                         )

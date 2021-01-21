@@ -24,6 +24,7 @@ def compute_centered_ranks(x):
     return y
 
 
+# items에서 group_size만큼 iteratable 하게 리턴
 def itergroups(items, group_size):
     assert group_size >= 1
     group = []
@@ -31,8 +32,8 @@ def itergroups(items, group_size):
         group.append(x)
         if len(group) == group_size:
             yield tuple(group)
-            del group[:]
-    if group:
+            del group[:] # make group emtpy
+    if group:  # when group is not emtpy
         yield tuple(group)
 
 

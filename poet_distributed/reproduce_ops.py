@@ -32,6 +32,7 @@ def name_env_config(ground_roughness,
 
     return env_name
 
+
 class Reproducer:
     def __init__(self, args):
         self.rs = np.random.RandomState(args.master_seed)
@@ -40,8 +41,7 @@ class Reproducer:
     def pick(self, arr):
         return self.rs.choice(arr)
 
-    def populate_array(self, arr, default_value,
-                       interval=0, increment=0, enforce=False, max_value=[]):
+    def populate_array(self, arr, default_value, interval=0, increment=0, enforce=False, max_value=[]):
         assert isinstance(arr, list)
         if len(arr) == 0 or enforce:
             arr = list(default_value)
@@ -59,7 +59,6 @@ class Reproducer:
                         continue
                     if arr0 + interval > arr1:
                         continue
-
                     choices.append([arr0, arr1])
 
             num_choices = len(choices)
@@ -72,30 +71,31 @@ class Reproducer:
 
         return arr
 
-
+    # 랜덤으로 선택된 하나의 부모로부터 자식을 변형시키는 부분
+    # todo:  bandit 적용 대상 후보
     def mutate(self, parent):
 
-        ground_roughness=parent.ground_roughness
+        # todo : 여기 왜 그런데 list로 형변환하는지 확인 필요
+        ground_roughness = parent.ground_roughness
         pit_gap = list(parent.pit_gap)
-        stump_width=list(parent.stump_width)
-        stump_height=list(parent.stump_height)
-        stump_float=list(parent.stump_float)
-        stair_height=list(parent.stair_height)
-        stair_width=list(parent.stair_width)
-        stair_steps=list(parent.stair_steps)
+        stump_width = list(parent.stump_width)
+        stump_height = list(parent.stump_height)
+        stump_float = list(parent.stump_float)
+        stair_height = list(parent.stair_height)
+        stair_width = list(parent.stair_width)
+        stair_steps = list(parent.stair_steps)
 
+        # todo : 밴딧 적용할려면 어떻게 리워드를 산정할까?
         if 'roughness' in self.categories:
             ground_roughness = np.round(ground_roughness + self.rs.uniform(-0.6, 0.6), 1)
             max_roughness = 10.0
             if ground_roughness > max_roughness:
                 ground_roughness = max_roughness
-
             if ground_roughness <= 0.0:
                 ground_roughness = 0.0
 
         if 'pit' in self.categories:
-            pit_gap = self.populate_array(pit_gap, [0, 0.8],
-                                          increment=0.4, max_value=[8.0, 8.0])
+            pit_gap = self.populate_array(pit_gap, [0, 0.8], increment=0.4, max_value=[8.0, 8.0])
 
         if 'stump' in self.categories:
             sub_category = '_h'
@@ -105,13 +105,12 @@ class Reproducer:
                 stump_width = self.populate_array(stump_width, [1, 2], enforce=enforce)
 
             if enforce or sub_category == '_h':
-                stump_height = self.populate_array(stump_height, [0, 0.4],
-                                                   increment=0.2, enforce=enforce, max_value=[5.0, 5.0])
+                stump_height = self.populate_array(stump_height, [0, 0.4],increment=0.2, enforce=enforce, max_value=[5.0, 5.0])
 
             stump_float = self.populate_array(stump_float, [0, 1], enforce=True)
 
         if 'stair' in self.categories:
-            sub_category = '_h' #self.rs.choice(['_s', '_h'])
+            sub_category = '_h'   # self.rs.choice(['_s', '_h'])
             enforce = (len(stair_steps) == 0)
 
             if enforce or sub_category == '_s':
@@ -124,8 +123,8 @@ class Reproducer:
 
             stair_width = self.populate_array(stump_width, [4, 5], enforce=True)
 
-        child_name = name_env_config(ground_roughness,
-                                     pit_gap,
+        # 이름을 만드는구만!!!!!!
+        child_name = name_env_config(ground_roughness, pit_gap,
                                      stump_width, stump_height, stump_float,
                                      stair_width, stair_height, stair_steps)
 
