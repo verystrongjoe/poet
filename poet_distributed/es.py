@@ -183,7 +183,7 @@ class ESOptimizer:
         self.normalize_grads_by_noise_std = normalize_grads_by_noise_std
         self.returns_normalization = returns_normalization
 
-        # todo : 용도가 머임?
+        # todo : is_candidate는 로깅 목적인가?
         if is_candidate == False:
             log_fields = [
                 'po_returns_mean_{}'.format(optim_id),
